@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   DefaultValuePipe,
   Get,
@@ -89,6 +90,45 @@ export class GithubController {
       owner,
       repo,
       pullNumber,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/repositories/:owner/:repo/file')
+  getRepositoryFile(
+    @Request() req: { user: AuthenticatedUser },
+    @Param('owner') owner: string,
+    @Param('repo') repo: string,
+    @Query('path') path: string,
+    @Query('ref') ref?: string,
+  ) {
+    if (!path?.trim()) {
+      throw new BadRequestException('Query parameter "path" is required');
+    }
+    return this.githubService.getRepositoryFile(
+      req.user,
+      owner,
+      repo,
+      path,
+      ref,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/repositories/:owner/:repo/contents')
+  listRepositoryContents(
+    @Request() req: { user: AuthenticatedUser },
+    @Param('owner') owner: string,
+    @Param('repo') repo: string,
+    @Query('path') path?: string,
+    @Query('ref') ref?: string,
+  ) {
+    return this.githubService.listRepositoryContents(
+      req.user,
+      owner,
+      repo,
+      path,
+      ref,
     );
   }
 

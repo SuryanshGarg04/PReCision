@@ -11,6 +11,7 @@ import { URLSearchParams } from 'url';
 import { AuthService } from '../auth/auth.service.js';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type.js';
 import { TokenEncryptionService } from '../common/services/token-encryption.service.js';
+import { decodeGithubRepositoryFileContentIfApplicable } from './github.helpers.js';
 import type {
   GithubOauthState,
   GithubUserEmail,
@@ -184,7 +185,68 @@ export class GithubService {
     );
   }
 
+  /**
+   * Lists files and subdirectories at the repo root or under `path` (GitHub contents API).
+   * Omit `path` or pass empty string for the repository root.
+   */
+  async listRepositoryContents(
+    user: AuthenticatedUser,
+    owner: string,
+    repo: string,
+    path?: string,
+    ref?: string,
+  ) {
+    const data = await this.githubRequest(
+      user.userId,
+      this.buildContentsApiPath(owner, repo, path, ref),
+    );
+    return decodeGithubRepositoryFileContentIfApplicable(data);
+  }
+
+  /**
+   * Single file or symlink metadata + content (GitHub "contents" API).
+   * File bodies are returned as UTF-8 text in `content` (GitHub sends base64; we decode).
+   * For directories GitHub returns an array of entries instead.
+   */
+  async getRepositoryFile(
+    user: AuthenticatedUser,
+    owner: string,
+    repo: string,
+    filePath: string,
+    ref?: string,
+  ) {
+    const normalized = filePath.replace(/^\/+/, '');
+    if (!normalized) {
+      throw new BadRequestException('File path is required');
+    }
+
+    const data = await this.githubRequest(
+      user.userId,
+      this.buildContentsApiPath(owner, repo, normalized, ref),
+    );
+    return decodeGithubRepositoryFileContentIfApplicable(data);
+  }
+
   // --- Internals ---
+
+  private buildContentsApiPath(
+    owner: string,
+    repo: string,
+    objectPath: string | undefined,
+    ref?: string,
+  ) {
+    const normalized = (objectPath ?? '').replace(/^\/+/, '').trim();
+    const search = new URLSearchParams();
+    if (ref) {
+      search.set('ref', ref);
+    }
+    const query = search.toString() ? `?${search.toString()}` : '';
+    const suffix =
+      normalized.length > 0
+        ? `/contents/${encodeURIComponent(normalized)}`
+        : '/contents';
+    return `/repos/${owner}/${repo}${suffix}${query}`;
+  }
 
   private verifyState(state: string) {
     try {
